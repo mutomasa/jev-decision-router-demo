@@ -3,7 +3,7 @@ from __future__ import annotations
 from jev_decision_router.flow import DecisionFlow
 from jev_decision_router.router import DecisionRouter
 from jev_decision_router.routes import DEFAULT_ROUTES, HUMAN_REVIEW
-from tests.fakes import FakeChatClient, FakeDecisionClient, make_choice
+from tests.fakes import FakeChatClient, FakeDecisionClient, FakeStreamingChatClient, make_choice
 
 
 def make_flow(
@@ -45,3 +45,28 @@ def test_human_review_generates_review_when_stop_disabled() -> None:
 
     flow.generate(decision, "x")
     assert chat.requests[0].system_prompt == DEFAULT_ROUTES[HUMAN_REVIEW].system_prompt
+
+
+def test_stream_falls_back_to_single_chunk_for_non_streaming_client() -> None:
+    flow, chat = make_flow("coding", 0.9)
+
+    stream = flow.stream(flow.decide("x").decision, "x")
+
+    assert stream.model == "fake-model"
+    assert stream.first_chunk_ms is None
+    assert list(stream) == ["generated"]
+    assert stream.first_chunk_ms is not None
+    assert stream.total_ms is not None
+    assert chat.requests[0].system_prompt == DEFAULT_ROUTES["coding"].system_prompt
+
+
+def test_stream_uses_streaming_client() -> None:
+    chat = FakeStreamingChatClient(["a", "b", "c"])
+    router = DecisionRouter(FakeDecisionClient(make_choice("direct_answer", 0.9)))
+    flow = DecisionFlow(router, chat)
+
+    stream = flow.stream(flow.decide("x").decision, "question")
+
+    assert "".join(stream) == "abc"
+    assert chat.requests[0].user_prompt == "question"
+    assert chat.requests[0].system_prompt == DEFAULT_ROUTES["direct_answer"].system_prompt

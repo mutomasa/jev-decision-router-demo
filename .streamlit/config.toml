@@ -1,0 +1,8 @@
+# プロジェクト固有の Streamlit 設定（~/.streamlit/config.toml より優先される）
+
+[server]
+# static/ フォルダは使わない（有効だと起動時に警告が出る）
+enableStaticServing = false
+
+[browser]
+gatherUsageStats = false

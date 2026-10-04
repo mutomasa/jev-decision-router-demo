@@ -63,3 +63,19 @@ def test_build_decision_client_requires_api_key() -> None:
 
 def test_build_chat_client_returns_vllm() -> None:
     assert isinstance(build_chat_client(Settings()), VLLMClient)
+
+
+def test_timeouts_and_retries_from_env() -> None:
+    settings = Settings.from_env(
+        {
+            "JEV_TIMEOUT": "5",
+            "JEV_MAX_RETRIES": "0",
+            "VLLM_TIMEOUT": "60.5",
+            "VLLM_MAX_RETRIES": "4",
+        }
+    )
+
+    assert settings.jev_timeout == 5.0
+    assert settings.jev_max_retries == 0
+    assert settings.vllm_timeout == 60.5
+    assert settings.vllm_max_retries == 4
