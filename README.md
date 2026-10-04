@@ -5,7 +5,10 @@
 ユーザーの自然言語リクエストを Jev の `Choice` で分類し、Confidence Gate を通過した結果に応じて、ルートごとの System Prompt でローカル vLLM を呼び出します。
 Agentic AI / Agentic Mesh における **Decision Plane（意思決定レイヤー）** の最小 PoC として利用できます。
 
-![coding ルートの実行画面](docs/images/route-coding.png)
+
+
+https://github.com/user-attachments/assets/ba3788b6-aed1-405a-a7e2-ff780596369d
+
 
 ## このデモの価値
 
