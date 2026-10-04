@@ -16,6 +16,7 @@ from jev_decision_router.interfaces import (
     ChatStream,
     StreamingChatClient,
 )
+from jev_decision_router.prompting import DecisionContextPromptBuilder, SystemPromptBuilder
 from jev_decision_router.router import DecisionRouter, RouteDecision
 from jev_decision_router.routes import HUMAN_REVIEW
 
@@ -54,17 +55,23 @@ class TimedStream:
 
 
 class DecisionFlow:
-    """DecisionRouter と ChatClient を組み合わせて 1 リクエストを処理する。"""
+    """DecisionRouter と ChatClient を組み合わせて 1 リクエストを処理する。
+
+    判断結果を LLM にどう渡すかは prompt_builder で決める。デフォルトでは、ルートの
+    System Prompt に確信度・確率を書き添える（DecisionContextPromptBuilder）。
+    """
 
     def __init__(
         self,
         router: DecisionRouter,
         chat_client: ChatClient,
         stop_on_human_review: bool = True,
+        prompt_builder: SystemPromptBuilder | None = None,
     ) -> None:
         self._router = router
         self._chat_client = chat_client
         self._stop_on_human_review = stop_on_human_review
+        self._prompt_builder = prompt_builder or DecisionContextPromptBuilder()
 
     def decide(self, user_request: str) -> TimedDecision:
         started = time.perf_counter()
@@ -76,7 +83,7 @@ class DecisionFlow:
 
     def generate(self, decision: RouteDecision, user_request: str) -> TimedResponse:
         started = time.perf_counter()
-        response = self._chat_client.chat(self._chat_request(decision, user_request))
+        response = self._chat_client.chat(self.build_chat_request(decision, user_request))
         return TimedResponse(response=response, latency_ms=_elapsed_ms(started))
 
     def stream(self, decision: RouteDecision, user_request: str) -> TimedStream:
@@ -84,15 +91,19 @@ class DecisionFlow:
 
         ChatClient が StreamingChatClient でない場合は、通常の応答を 1 つの断片として返す。
         """
-        request = self._chat_request(decision, user_request)
+        request = self.build_chat_request(decision, user_request)
         if isinstance(self._chat_client, StreamingChatClient):
             return TimedStream(self._chat_client.stream(request))
         response = self._chat_client.chat(request)
         return TimedStream(ChatStream(model=response.model, chunks=iter([response.content])))
 
-    def _chat_request(self, decision: RouteDecision, user_request: str) -> ChatRequest:
+    def build_chat_request(self, decision: RouteDecision, user_request: str) -> ChatRequest:
+        """判断結果から、生成レイヤーに渡すリクエストを作る（Jev と LLM の接点）。"""
         route = self._router.routes[decision.route]
-        return ChatRequest(system_prompt=route.system_prompt, user_prompt=user_request)
+        return ChatRequest(
+            system_prompt=self._prompt_builder.build(route, decision),
+            user_prompt=user_request,
+        )
 
 
 def _elapsed_ms(started: float) -> float:

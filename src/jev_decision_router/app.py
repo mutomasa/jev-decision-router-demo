@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, replace
+from dataclasses import asdict, dataclass, replace
 
 import pandas as pd
 import streamlit as st
@@ -16,11 +16,30 @@ from jev_decision_router.factory import (
 )
 from jev_decision_router.flow import DecisionFlow
 from jev_decision_router.interfaces import ChatError, DecisionError
+from jev_decision_router.prompting import (
+    DecisionContextPromptBuilder,
+    RoutePromptBuilder,
+    SystemPromptBuilder,
+)
 from jev_decision_router.router import DecisionRouter, RouteDecision
 from jev_decision_router.routes import DEFAULT_ROUTES
 
 
-def render_sidebar(defaults: Settings) -> tuple[Settings, bool, bool]:
+@dataclass(frozen=True)
+class UIOptions:
+    """環境変数ではなく、画面上でだけ切り替える設定。"""
+
+    stop_on_human_review: bool
+    stream_response: bool
+    pass_decision_context: bool
+
+    def prompt_builder(self) -> SystemPromptBuilder:
+        if self.pass_decision_context:
+            return DecisionContextPromptBuilder()
+        return RoutePromptBuilder()
+
+
+def render_sidebar(defaults: Settings) -> tuple[Settings, UIOptions]:
     with st.sidebar:
         st.header("Settings")
         jev_base_url = st.text_input("Jev API URL", defaults.jev_base_url)
@@ -64,6 +83,14 @@ def render_sidebar(defaults: Settings) -> tuple[Settings, bool, bool]:
             value=True,
             help="Show the vLLM answer token by token.",
         )
+        pass_decision_context = st.toggle(
+            "Pass Jev confidence to vLLM",
+            value=True,
+            help=(
+                "Append the Jev route, confidence, and alternative routes to the system prompt. "
+                "When confidence is low, vLLM is asked to state its interpretation first."
+            ),
+        )
 
     settings = replace(
         defaults,
@@ -76,7 +103,12 @@ def render_sidebar(defaults: Settings) -> tuple[Settings, bool, bool]:
         vllm_model=vllm_model,
         vllm_api_key=vllm_api_key,
     )
-    return settings, stop_on_human_review, stream_response
+    options = UIOptions(
+        stop_on_human_review=stop_on_human_review,
+        stream_response=stream_response,
+        pass_decision_context=pass_decision_context,
+    )
+    return settings, options
 
 
 def render_decision(decision: RouteDecision, latency_ms: float, will_stop: bool) -> None:
@@ -120,7 +152,7 @@ def main() -> None:
         "Human request → Jev / Choice → confidence gate → local vLLM. Jev decides; vLLM generates."
     )
 
-    settings, stop_on_human_review, stream_response = render_sidebar(Settings.from_env())
+    settings, options = render_sidebar(Settings.from_env())
 
     request_text = st.text_area(
         "Human request",
@@ -155,7 +187,8 @@ def main() -> None:
     flow = DecisionFlow(
         router=DecisionRouter(decision_client, settings.confidence_threshold),
         chat_client=build_chat_client(settings),
-        stop_on_human_review=stop_on_human_review,
+        stop_on_human_review=options.stop_on_human_review,
+        prompt_builder=options.prompt_builder(),
     )
 
     with st.status("Jev is making a decision…", expanded=True) as status:
@@ -187,7 +220,9 @@ def main() -> None:
 
     st.markdown("### local vLLM execution")
     st.caption(f"Route policy: {DEFAULT_ROUTES[decision.route].description}")
-    if stream_response:
+    with st.expander("System prompt sent to vLLM"):
+        st.code(flow.build_chat_request(decision, request_text).system_prompt, language="markdown")
+    if options.stream_response:
         render_streamed_response(flow, decision, request_text)
     else:
         render_response(flow, decision, request_text)

@@ -43,3 +43,21 @@ def test_vllm_connection_error_is_shown(app: AppTest) -> None:
 
     assert app.metric[0].value == "coding"
     assert any("Could not call vLLM" in e.message for e in app.exception)
+
+
+def test_system_prompt_with_confidence_is_shown(app: AppTest) -> None:
+    app.text_area[0].input("PythonでCSVを読み込むコードを書いて")
+    app.button[0].click().run()
+
+    prompts = [c.value for c in app.code if "Routing context" in c.value]
+    assert prompts
+    assert "Decision confidence:" in prompts[0]
+
+
+def test_confidence_toggle_off_sends_route_prompt_only(app: AppTest) -> None:
+    toggle = next(t for t in app.toggle if t.label == "Pass Jev confidence to vLLM")
+    toggle.set_value(False).run()
+    app.text_area[0].input("PythonでCSVを読み込むコードを書いて")
+    app.button[0].click().run()
+
+    assert not [c.value for c in app.code if "Routing context" in c.value]
