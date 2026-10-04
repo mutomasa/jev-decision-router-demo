@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from jev_decision_router.flow import DecisionFlow
+from jev_decision_router.prompting import RoutePromptBuilder
 from jev_decision_router.router import DecisionRouter
 from jev_decision_router.routes import DEFAULT_ROUTES, HUMAN_REVIEW
 from tests.fakes import FakeChatClient, FakeDecisionClient, FakeStreamingChatClient, make_choice
@@ -23,7 +24,7 @@ def test_generate_uses_route_system_prompt() -> None:
     assert flow.should_stop(decision) is False
     assert generated.response.content == "generated"
     assert generated.latency_ms >= 0
-    assert chat.requests[0].system_prompt == DEFAULT_ROUTES["coding"].system_prompt
+    assert chat.requests[0].system_prompt.startswith(DEFAULT_ROUTES["coding"].system_prompt)
     assert chat.requests[0].user_prompt == "implement it"
 
 
@@ -44,7 +45,7 @@ def test_human_review_generates_review_when_stop_disabled() -> None:
     assert flow.should_stop(decision) is False
 
     flow.generate(decision, "x")
-    assert chat.requests[0].system_prompt == DEFAULT_ROUTES[HUMAN_REVIEW].system_prompt
+    assert chat.requests[0].system_prompt.startswith(DEFAULT_ROUTES[HUMAN_REVIEW].system_prompt)
 
 
 def test_stream_falls_back_to_single_chunk_for_non_streaming_client() -> None:
@@ -57,7 +58,7 @@ def test_stream_falls_back_to_single_chunk_for_non_streaming_client() -> None:
     assert list(stream) == ["generated"]
     assert stream.first_chunk_ms is not None
     assert stream.total_ms is not None
-    assert chat.requests[0].system_prompt == DEFAULT_ROUTES["coding"].system_prompt
+    assert chat.requests[0].system_prompt.startswith(DEFAULT_ROUTES["coding"].system_prompt)
 
 
 def test_stream_uses_streaming_client() -> None:
@@ -69,4 +70,25 @@ def test_stream_uses_streaming_client() -> None:
 
     assert "".join(stream) == "abc"
     assert chat.requests[0].user_prompt == "question"
-    assert chat.requests[0].system_prompt == DEFAULT_ROUTES["direct_answer"].system_prompt
+    assert chat.requests[0].system_prompt.startswith(DEFAULT_ROUTES["direct_answer"].system_prompt)
+
+
+def test_confidence_is_passed_to_llm_by_default() -> None:
+    flow, chat = make_flow("coding", 0.9)
+
+    flow.generate(flow.decide("x").decision, "x")
+
+    system_prompt = chat.requests[0].system_prompt
+    assert "## Routing context" in system_prompt
+    assert "- Decision confidence: 0.90" in system_prompt
+
+
+def test_prompt_builder_can_be_replaced() -> None:
+    chat = FakeChatClient()
+    router = DecisionRouter(FakeDecisionClient(make_choice("coding", 0.9)))
+    flow = DecisionFlow(router, chat, prompt_builder=RoutePromptBuilder())
+
+    request = flow.build_chat_request(flow.decide("x").decision, "x")
+
+    assert request.system_prompt == DEFAULT_ROUTES["coding"].system_prompt
+    assert request.user_prompt == "x"

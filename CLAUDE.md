@@ -42,6 +42,7 @@ HTTP クライアントは `httpx.MockTransport`（`tests/conftest.py` の `mock
 app.py (Streamlit UI)
   └─ factory.py (Composition Root: Settings → 具象クライアント)
   └─ flow.py    DecisionFlow: decide → should_stop → generate / stream
+       ├─ prompting.py SystemPromptBuilder: 判断結果 → System Prompt（Jev と LLM の接点）
        ├─ router.py  DecisionRouter: Confidence Gate（決定論的ポリシー）
        │    └─ DecisionClient ← jev_client.JevClient / mock_jev_client.MockJevClient
        └─ ChatClient (+ StreamingChatClient) ← vllm_client.VLLMClient
@@ -58,6 +59,7 @@ retry.py       RetryPolicy / send_with_retry（Jev・vLLM クライアントが�
 | `jev_client.py` | Jev API（`POST /v1/systemone`）の実装 |
 | `mock_jev_client.py` | キーワードベースの UI 確認用 Mock |
 | `vllm_client.py` | vLLM OpenAI 互換 API の実装（通常・ストリーミング） |
+| `prompting.py` | `SystemPromptBuilder`。ルートと判断結果（確信度・他の候補）から System Prompt を作る。`DecisionContextPromptBuilder`（デフォルト）/ `RoutePromptBuilder` |
 | `retry.py` | HTTP リトライポリシー（指数バックオフ、`Retry-After` 対応） |
 | `evaluation.py` | ルーティング精度の評価（`jev-router-eval`） |
 | `config.py` | 環境変数 → `Settings` |
@@ -115,6 +117,8 @@ class ChatStream:
 **ルール:**
 - vLLM 以外の LLM（Ollama、OpenAI など）に対応するときは、`ChatClient` を満たす新しいクラスを追加し、`factory.build_chat_client` で切り替える。`VLLMClient` に分岐を追加しない。
 - `router.py` / `flow.py` / `app.py` から `VLLMClient` を直接 import しない。必ず `ChatClient` に依存する。
+- Jev の判断結果を LLM に渡す方法を変えるときは、`ChatRequest` に項目を足さず、`prompting.py` の `SystemPromptBuilder` を実装・修正する。Jev と LLM の接点は `DecisionFlow.build_chat_request` だけに保つ。
+- `prompting.py` の指示文を変えたら、実際の vLLM で回答を確かめる。小さいモデルは指示の構造をそのまま出力したり、回答の言語が変わったりしやすい。
 - リクエストやレスポンスの項目を増やすときは、`ChatRequest` / `ChatResponse` を拡張し、`tests/test_vllm_client.py` で実際に送る payload を検証する。
 
 ## SOLID 原則

@@ -62,6 +62,7 @@ LLM に「危険なら断って」と頼むのではなく、**実行するか�
 - [Architecture](#architecture)
 - [Decision Choices](#decision-choices)
 - [Confidence Gate](#confidence-gate)
+- [Jev の結果を LLM に渡す](#jev-の結果を-llm-に渡す)
 - [Project Structure](#project-structure)
 - [Setup](#setup)
 - [Configuration](#configuration)
@@ -165,6 +166,37 @@ choice = coding, confidence = 0.58, threshold = 0.65
 
 ---
 
+## Jev の結果を LLM に渡す
+
+Jev の判断は、ルートの選択（どの System Prompt を使うか）だけでなく、**確信度と他の候補ルート**としても vLLM に渡します（`prompting.py` の `DecisionContextPromptBuilder`）。
+ルートの System Prompt の後ろに、次のような「Routing context」を書き添えます。
+
+```text
+## Routing context (from the decision layer)
+- Selected route: deep_analysis
+- Decision confidence: 0.65
+- Other candidate routes: human_review (0.26)
+```
+
+確信度に応じて LLM にどう振る舞わせるかは、コード側で決めています。
+
+| 確信度 | LLM への指示 |
+|---|---|
+| 0.8 以上 | 選ばれたルートのスタイルで、そのまま答える |
+| 0.8 未満（またはゲートで `human_review` に回った） | 最初に解釈と前提を 1 文で述べてから、本体の回答を書く。別の解釈がありうれば、最後に一言添えるか確認の質問をする |
+
+どちらの場合も、「ユーザーと同じ言語で答える」「Routing context や数値には触れない」と指示します。
+vLLM に実際に送った System Prompt は、画面の **System prompt sent to vLLM** で確認できます。サイドバーの **Pass Jev confidence to vLLM** を OFF にすると、ルートの System Prompt だけを送ります（従来の動き）。
+
+デモ環境（`Qwen/Qwen2.5-1.5B-Instruct`）で各条件 2 回ずつ試した結果：
+
+- 確信度 0.65 のリクエスト（「ログ基盤を見直したい」）では、確信度を渡すと 2 回とも解釈を述べてから日本語で回答した。渡さない場合は 1 回が中国語の回答になった
+- 確信度 0.90・1.00 のリクエストでは、目立った違いはなかった
+
+試行回数が少ないため、回答の質が上がったとまでは言えません。
+
+---
+
 ## Project Structure
 
 ```text
@@ -184,6 +216,7 @@ choice = coding, confidence = 0.58, threshold = 0.65
 │   ├── routes.py                # Route 定義（Choice・選択基準・System Prompt）
 │   ├── router.py                # DecisionRouter（Confidence Gate）
 │   ├── flow.py                  # DecisionFlow（判断 → 停止判定 → 生成）
+│   ├── prompting.py             # Jev の結果（確信度など）を System Prompt に書き添える
 │   ├── jev_client.py            # Jev API クライアント（POST /v1/systemone）
 │   ├── mock_jev_client.py       # UI 確認用の Mock クライアント
 │   ├── vllm_client.py           # vLLM OpenAI 互換 API クライアント
@@ -321,7 +354,7 @@ uv run streamlit run src/jev_decision_router/app.py
 1. **User Request** — テキストを入力し「Run decision flow」を押す
 2. **Jev Decision** — Choice / Probability / Confidence を取得
 3. **Policy Evaluation** — Confidence Gate でルートを確定（不足時は `human_review`）
-4. **Execution** — ルート別 System Prompt でローカル vLLM を呼び出す（`human_review` は停止）
+4. **Execution** — ルート別 System Prompt に確信度などを書き添えて、ローカル vLLM を呼び出す（`human_review` は停止）
 5. **Response** — 回答をストリーミング表示し、Jev のレイテンシ・最初のトークンまでの時間・vLLM 全体のレイテンシを表示
 
 サイドバーの **Stream vLLM response** を OFF にすると、回答がそろってから一度に表示します。
