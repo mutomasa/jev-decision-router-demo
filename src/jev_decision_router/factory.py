@@ -10,6 +10,7 @@ from jev_decision_router.config import Settings
 from jev_decision_router.interfaces import ChatClient, DecisionClient
 from jev_decision_router.jev_client import JevClient
 from jev_decision_router.mock_jev_client import MockJevClient
+from jev_decision_router.retry import RetryPolicy
 from jev_decision_router.vllm_client import VLLMClient
 
 
@@ -26,6 +27,8 @@ def build_decision_client(settings: Settings) -> DecisionClient:
         api_key=settings.typesafe_api_key,
         base_url=settings.jev_base_url,
         model=settings.jev_model,
+        timeout=settings.jev_timeout,
+        retry_policy=RetryPolicy(max_retries=settings.jev_max_retries),
     )
 
 
@@ -34,4 +37,6 @@ def build_chat_client(settings: Settings) -> ChatClient:
         base_url=settings.vllm_base_url,
         model=settings.vllm_model or None,
         api_key=settings.vllm_api_key,
+        timeout=settings.vllm_timeout,
+        retry_policy=RetryPolicy(max_retries=settings.vllm_max_retries),
     )

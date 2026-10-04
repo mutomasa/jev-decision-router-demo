@@ -11,8 +11,14 @@ dependencies = [
     "streamlit>=1.40",
 ]
 
+[project.scripts]
+jev-router-eval = "jev_decision_router.evaluation:main"
+
 [dependency-groups]
 dev = [
+    "mypy>=2.4.0",
+    "pandas-stubs>=3.0.5.260914",
+    "pre-commit>=4.6.2",
     "pytest>=8.0",
     "pytest-cov>=5.0",
     "ruff>=0.6",
@@ -27,7 +33,31 @@ packages = ["src/jev_decision_router"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra"
+addopts = "-ra --cov=jev_decision_router --cov-report=term-missing"
+
+[tool.coverage.run]
+branch = true
+source = ["jev_decision_router"]
+# app.py は Streamlit がスクリプトとして実行するため計測できない。
+# UI は tests/test_app.py（streamlit.testing の AppTest）で検証する。
+omit = ["*/jev_decision_router/app.py"]
+
+[tool.coverage.report]
+# カバレッジの目標値。これを下回ると pytest が失敗する。
+fail_under = 90
+skip_empty = true
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"
+packages = ["jev_decision_router", "tests"]
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+# pytest fixture の引数には型を付けなくてもよい
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
 
 [tool.ruff]
 line-length = 100

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, replace
 
 import pandas as pd
 import streamlit as st
@@ -20,7 +20,7 @@ from jev_decision_router.router import DecisionRouter, RouteDecision
 from jev_decision_router.routes import DEFAULT_ROUTES
 
 
-def render_sidebar(defaults: Settings) -> tuple[Settings, bool]:
+def render_sidebar(defaults: Settings) -> tuple[Settings, bool, bool]:
     with st.sidebar:
         st.header("Settings")
         jev_base_url = st.text_input("Jev API URL", defaults.jev_base_url)
@@ -59,8 +59,14 @@ def render_sidebar(defaults: Settings) -> tuple[Settings, bool]:
             value=True,
             help="Demonstrates a governance gate in the decision layer.",
         )
+        stream_response = st.toggle(
+            "Stream vLLM response",
+            value=True,
+            help="Show the vLLM answer token by token.",
+        )
 
-    settings = Settings(
+    settings = replace(
+        defaults,
         typesafe_api_key=jev_api_key,
         jev_base_url=jev_base_url,
         jev_model=jev_model,
@@ -70,7 +76,7 @@ def render_sidebar(defaults: Settings) -> tuple[Settings, bool]:
         vllm_model=vllm_model,
         vllm_api_key=vllm_api_key,
     )
-    return settings, stop_on_human_review
+    return settings, stop_on_human_review, stream_response
 
 
 def render_decision(decision: RouteDecision, latency_ms: float, will_stop: bool) -> None:
@@ -114,7 +120,7 @@ def main() -> None:
         "Human request → Jev / Choice → confidence gate → local vLLM. Jev decides; vLLM generates."
     )
 
-    settings, stop_on_human_review = render_sidebar(Settings.from_env())
+    settings, stop_on_human_review, stream_response = render_sidebar(Settings.from_env())
 
     request_text = st.text_area(
         "Human request",
@@ -181,6 +187,13 @@ def main() -> None:
 
     st.markdown("### local vLLM execution")
     st.caption(f"Route policy: {DEFAULT_ROUTES[decision.route].description}")
+    if stream_response:
+        render_streamed_response(flow, decision, request_text)
+    else:
+        render_response(flow, decision, request_text)
+
+
+def render_response(flow: DecisionFlow, decision: RouteDecision, request_text: str) -> None:
     try:
         with st.spinner("Calling local vLLM…"):
             generated = flow.generate(decision, request_text)
@@ -194,6 +207,29 @@ def main() -> None:
 
     st.markdown("### Response")
     st.write(generated.response.content)
+
+
+def render_streamed_response(
+    flow: DecisionFlow, decision: RouteDecision, request_text: str
+) -> None:
+    metrics = st.empty()
+    st.markdown("### Response")
+    try:
+        stream = flow.stream(decision, request_text)
+        st.write_stream(stream)
+    except ChatError as exc:
+        st.exception(exc)
+        return
+
+    with metrics.container():
+        m1, m2, m3 = st.columns(3)
+        m1.metric("vLLM model", stream.model)
+        m2.metric("Time to first token", _format_ms(stream.first_chunk_ms))
+        m3.metric("vLLM latency", _format_ms(stream.total_ms))
+
+
+def _format_ms(value: float | None) -> str:
+    return "-" if value is None else f"{value:.0f} ms"
 
 
 main()

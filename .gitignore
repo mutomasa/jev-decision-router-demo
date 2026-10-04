@@ -20,3 +20,6 @@ __pycache__/
 .ruff_cache/
 .coverage
 htmlcov/
+
+# Browser automation artifacts (may contain secrets from the page)
+.playwright-mcp/

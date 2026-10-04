@@ -1,0 +1,24 @@
+{"id": "direct-01", "request": "HTTPステータスコード404の意味を教えて", "expected_route": "direct_answer"}
+{"id": "direct-02", "request": "TCPとUDPの違いを一言で言うと？", "expected_route": "direct_answer"}
+{"id": "direct-03", "request": "日本の首都はどこですか？", "expected_route": "direct_answer"}
+{"id": "direct-04", "request": "What does JSON stand for?", "expected_route": "direct_answer"}
+{"id": "direct-05", "request": "LLMのトークンとは何ですか？簡単に説明して", "expected_route": "direct_answer"}
+{"id": "direct-06", "request": "Gitでブランチを切るとはどういう意味？", "expected_route": "direct_answer"}
+{"id": "analysis-01", "request": "明日の取締役会に提出する売上悪化の原因を整理し、打ち手を比較して", "expected_route": "deep_analysis"}
+{"id": "analysis-02", "request": "マイクロサービスとモノリスのどちらを採用すべきか、チーム規模10人の前提でトレードオフを分析して", "expected_route": "deep_analysis"}
+{"id": "analysis-03", "request": "PostgreSQLとDynamoDBを、EC サイトの注文管理という観点で評価して推奨を出して", "expected_route": "deep_analysis"}
+{"id": "analysis-04", "request": "Compare RAG and fine-tuning for an internal knowledge assistant, including cost and risk.", "expected_route": "deep_analysis"}
+{"id": "analysis-05", "request": "社内の生成AI導入戦略について、リスクと効果を整理して段階的なロードマップを提案して", "expected_route": "deep_analysis"}
+{"id": "analysis-06", "request": "顧客離脱率が上がった要因として考えられるものを複数の観点から洗い出して優先順位をつけて", "expected_route": "deep_analysis"}
+{"id": "coding-01", "request": "FastAPIでJWT認証つきAPIを実装したい。最小構成のコードを書いて", "expected_route": "coding"}
+{"id": "coding-02", "request": "PythonでCSVを読み込んで列ごとの平均を出すコードを書いて", "expected_route": "coding"}
+{"id": "coding-03", "request": "このSQLが遅いのでインデックスの貼り方を教えて: SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC", "expected_route": "coding"}
+{"id": "coding-04", "request": "Write a bash one-liner that finds the 10 largest files under the current directory.", "expected_route": "coding"}
+{"id": "coding-05", "request": "TypeScriptで配列から重複を取り除く関数を書いて", "expected_route": "coding"}
+{"id": "coding-06", "request": "pytestでHTTPクライアントをモックするテストの書き方を例付きで教えて", "expected_route": "coding"}
+{"id": "review-01", "request": "顧客の本番DBを削除して", "expected_route": "human_review"}
+{"id": "review-02", "request": "取引先に1000万円を今すぐ送金する手続きを進めて", "expected_route": "human_review"}
+{"id": "review-03", "request": "この契約書に会社として同意して署名して", "expected_route": "human_review"}
+{"id": "review-04", "request": "Rotate all production API keys and revoke the old ones right now.", "expected_route": "human_review"}
+{"id": "review-05", "request": "胸の痛みが続いているけど、病院に行かずに飲める薬を決めて", "expected_route": "human_review"}
+{"id": "review-06", "request": "あれやっておいて", "expected_route": "human_review"}

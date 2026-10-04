@@ -5,10 +5,12 @@ Jev・vLLM などの具体的な実装には依存しない（依存性逆転の
 
 - DecisionClient: System 1（判断）レイヤー。Jev / Mock が実装する。
 - ChatClient:     System 2（生成）レイヤー。vLLM が実装する。
+- StreamingChatClient: System 2 のストリーミング版。vLLM が実装する。
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
@@ -100,4 +102,30 @@ class ChatClient(Protocol):
 
     def chat(self, request: ChatRequest) -> ChatResponse:
         """応答を生成する。失敗時は ChatError を送出する。"""
+        ...
+
+
+@dataclass(frozen=True)
+class ChatStream:
+    """ストリーミング応答。
+
+    Attributes:
+        model: 実際に使われたモデル名。
+        chunks: 生成されたテキストの断片。反復中の失敗は ChatError として送出される。
+    """
+
+    model: str
+    chunks: Iterator[str]
+
+
+@runtime_checkable
+class StreamingChatClient(Protocol):
+    """応答を逐次返せる生成クライアント。
+
+    ChatClient とは別のインターフェースにしている（インターフェース分離の原則）。
+    ストリーミングに対応しないバックエンドは ChatClient だけを実装すればよい。
+    """
+
+    def stream(self, request: ChatRequest) -> ChatStream:
+        """応答をストリーミングで生成する。接続時の失敗は ChatError を送出する。"""
         ...

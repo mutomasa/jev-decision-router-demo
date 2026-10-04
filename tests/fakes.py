@@ -5,6 +5,7 @@ from __future__ import annotations
 from jev_decision_router.interfaces import (
     ChatRequest,
     ChatResponse,
+    ChatStream,
     ChoiceRequest,
     ChoiceResult,
 )
@@ -47,3 +48,15 @@ def make_choice(
         model="test-jev",
         usage={},
     )
+
+
+class FakeStreamingChatClient(FakeChatClient):
+    """StreamingChatClient のテスト用フェイク。"""
+
+    def __init__(self, chunks: list[str], model: str = "fake-stream-model") -> None:
+        super().__init__(content="".join(chunks), model=model)
+        self.chunks = chunks
+
+    def stream(self, request: ChatRequest) -> ChatStream:
+        self.requests.append(request)
+        return ChatStream(model=self.model, chunks=iter(self.chunks))

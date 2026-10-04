@@ -6,9 +6,16 @@ UI（Streamlit）から独立しているため、単体でテストできる。
 from __future__ import annotations
 
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 
-from jev_decision_router.interfaces import ChatClient, ChatRequest, ChatResponse
+from jev_decision_router.interfaces import (
+    ChatClient,
+    ChatRequest,
+    ChatResponse,
+    ChatStream,
+    StreamingChatClient,
+)
 from jev_decision_router.router import DecisionRouter, RouteDecision
 from jev_decision_router.routes import HUMAN_REVIEW
 
@@ -23,6 +30,27 @@ class TimedDecision:
 class TimedResponse:
     response: ChatResponse
     latency_ms: float
+
+
+class TimedStream:
+    """ストリーミング応答を反復しながら、最初の断片までの時間と全体の時間を計測する。
+
+    first_chunk_ms / total_ms は反復が終わるまで None。
+    """
+
+    def __init__(self, stream: ChatStream) -> None:
+        self.model = stream.model
+        self.first_chunk_ms: float | None = None
+        self.total_ms: float | None = None
+        self._chunks = stream.chunks
+
+    def __iter__(self) -> Iterator[str]:
+        started = time.perf_counter()
+        for chunk in self._chunks:
+            if self.first_chunk_ms is None:
+                self.first_chunk_ms = _elapsed_ms(started)
+            yield chunk
+        self.total_ms = _elapsed_ms(started)
 
 
 class DecisionFlow:
@@ -47,12 +75,24 @@ class DecisionFlow:
         return self._stop_on_human_review and decision.route == HUMAN_REVIEW
 
     def generate(self, decision: RouteDecision, user_request: str) -> TimedResponse:
-        route = self._router.routes[decision.route]
         started = time.perf_counter()
-        response = self._chat_client.chat(
-            ChatRequest(system_prompt=route.system_prompt, user_prompt=user_request)
-        )
+        response = self._chat_client.chat(self._chat_request(decision, user_request))
         return TimedResponse(response=response, latency_ms=_elapsed_ms(started))
+
+    def stream(self, decision: RouteDecision, user_request: str) -> TimedStream:
+        """応答をストリーミングで生成する。
+
+        ChatClient が StreamingChatClient でない場合は、通常の応答を 1 つの断片として返す。
+        """
+        request = self._chat_request(decision, user_request)
+        if isinstance(self._chat_client, StreamingChatClient):
+            return TimedStream(self._chat_client.stream(request))
+        response = self._chat_client.chat(request)
+        return TimedStream(ChatStream(model=response.model, chunks=iter([response.content])))
+
+    def _chat_request(self, decision: RouteDecision, user_request: str) -> ChatRequest:
+        route = self._router.routes[decision.route]
+        return ChatRequest(system_prompt=route.system_prompt, user_prompt=user_request)
 
 
 def _elapsed_ms(started: float) -> float:

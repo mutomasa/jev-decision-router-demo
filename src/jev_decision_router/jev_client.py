@@ -1,6 +1,7 @@
 """Jev API クライアント（DecisionClient の実装）。
 
 Endpoint: POST {base_url}/v1/systemone
+仕様: https://docs.typesafe.ai/api
 """
 
 from __future__ import annotations
@@ -10,12 +11,16 @@ from typing import Any
 import httpx
 
 from jev_decision_router.interfaces import ChoiceRequest, ChoiceResult, DecisionError
+from jev_decision_router.retry import RetryPolicy, send_with_retry
 
 QUESTION_KEY = "route"
 
 
 class JevClient:
-    """TypeSafe Jev の Choice 判断を呼び出す。"""
+    """TypeSafe Jev の Choice 判断を呼び出す。
+
+    429（rate limit）・529（overloaded）などは RetryPolicy に従って指数バックオフで再送する。
+    """
 
     def __init__(
         self,
@@ -23,12 +28,14 @@ class JevClient:
         base_url: str = "https://api.typesafe.ai",
         model: str = "jev-latest",
         timeout: float = 30.0,
+        retry_policy: RetryPolicy | None = None,
         http_client: httpx.Client | None = None,
     ) -> None:
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._timeout = timeout
+        self._retry_policy = retry_policy or RetryPolicy()
         self._http = http_client or httpx.Client()
 
     def choose(self, request: ChoiceRequest) -> ChoiceResult:
@@ -54,20 +61,24 @@ class JevClient:
             "Content-Type": "application/json",
         }
         try:
-            response = self._http.post(
-                f"{self._base_url}/v1/systemone",
-                headers=headers,
-                json=payload,
-                timeout=self._timeout,
+            response = send_with_retry(
+                lambda: self._http.post(
+                    f"{self._base_url}/v1/systemone",
+                    headers=headers,
+                    json=payload,
+                    timeout=self._timeout,
+                ),
+                self._retry_policy,
             )
             response.raise_for_status()
-            return response.json()
+            body: dict[str, Any] = response.json()
         except httpx.HTTPStatusError as exc:
             raise DecisionError(
                 f"Jev returned HTTP {exc.response.status_code}: {exc.response.text}"
             ) from exc
         except (httpx.HTTPError, ValueError) as exc:
             raise DecisionError(f"Could not call Jev: {exc}") from exc
+        return body
 
     def _parse(self, body: dict[str, Any]) -> ChoiceResult:
         try:
